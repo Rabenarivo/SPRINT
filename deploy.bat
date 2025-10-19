@@ -1,45 +1,89 @@
 @echo off
+chcp 65001 > nul
 REM ------------------------------------------------------------------------
-REM Script de déploiement Windows pour compiler le framework et préparer le projet de test
+REM Script de déploiement simplifié pour le framework
 REM ------------------------------------------------------------------------
 
-REM Définition des chemins (à adapter si besoin)
 set "FRAMEWORK_DIR=D:\ITU\S5\MR NAINA\framework"
 set "BUILD_DIR=%FRAMEWORK_DIR%\build"
 set "TEST_DIR=D:\OUTILS\LOGICIELS\apache-tomcat-11.0.7\webapps\testFramework"
-set "SERVLET_JAR=%FRAMEWORK_DIR%\jakarta.servlet-api_5.0.0.jar"
+set "SRC_DIR=D:\ITU\S5\MR NAINA\SPRINT\src"
 
-REM Création des dossiers de sortie du framework
-if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
-if not exist "%BUILD_DIR%\classes" mkdir "%BUILD_DIR%\classes"
+echo === Déploiement du framework vers Tomcat ===
 
-REM Compilation récursive des sources Java du framework
-echo Compilation du framework...
-for /R "%FRAMEWORK_DIR%" %%f in (*.java) do (
-    echo   Compilation de %%~nxf
-    javac -classpath "%SERVLET_JAR%" -d "%BUILD_DIR%\classes" "%%f"
-    if errorlevel 1 (
-        echo Erreur de compilation du fichier %%~nxf
-        exit /b 1
-    )
+REM ------------------------------------------------------------------------
+REM Étape 1 : Nettoyage et création des dossiers
+REM ------------------------------------------------------------------------
+echo [INFO] Nettoyage du déploiement précédent...
+if exist "%TEST_DIR%" rmdir /S /Q "%TEST_DIR%"
+echo [INFO] Création de la structure des dossiers...
+mkdir "%TEST_DIR%"
+mkdir "%TEST_DIR%\WEB-INF"
+mkdir "%TEST_DIR%\WEB-INF\lib"
+mkdir "%TEST_DIR%\WEB-INF\classes"
+
+REM ------------------------------------------------------------------------
+REM Étape 2 : Copie du framework.jar déjà compilé
+REM ------------------------------------------------------------------------
+if exist "%BUILD_DIR%\framework.jar" (
+    echo [OK] Copie du framework.jar...
+    xcopy "%BUILD_DIR%\framework.jar" "%TEST_DIR%\WEB-INF\lib\" /Y >nul
+) else (
+    echo [ERREUR] framework.jar introuvable dans %BUILD_DIR%
+    exit /b 1
 )
 
-REM Création du JAR du framework
-echo Creation du JAR du framework...
-cd /d "%BUILD_DIR%"
-if exist "framework.jar" del "framework.jar"
-jar cvf "framework.jar" -C "classes" .
+REM ------------------------------------------------------------------------
+REM Étape 3 : Copie des fichiers JSP
+REM ------------------------------------------------------------------------
+if exist "%SRC_DIR%" (
+    echo [INFO] Copie des fichiers JSP depuis %SRC_DIR%...
+    xcopy "%SRC_DIR%\*.jsp" "%TEST_DIR%\" /Y /I
+    if errorlevel 1 (
+        echo [ERREUR] Échec de la copie des fichiers JSP
+        exit /b 1
+    ) else (
+        echo [OK] Fichiers JSP copiés avec succès
+    )
+) else (
+    echo [ERREUR] Dossier source JSP non trouvé : %SRC_DIR%
+    exit /b 1
+)
 
-REM 
-echo Copie du framework.jar dans le projet Test...
-if not exist "%TEST_DIR%\WEB-INF\lib" mkdir "%TEST_DIR%\WEB-INF\lib"
-xcopy "%BUILD_DIR%\framework.jar" "%TEST_DIR%\WEB-INF\lib\" /Y >nul
+REM ------------------------------------------------------------------------
+REM Étape 4 : Création du web.xml si inexistant
+REM ------------------------------------------------------------------------
+if not exist "%TEST_DIR%\WEB-INF\web.xml" (
+    echo [Création] du fichier web.xml par défaut...
+    (
+        echo ^<?xml version="1.0" encoding="UTF-8"?^>
+        echo ^<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+        echo          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        echo          xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_5_0.xsd"
+        echo          version="5.0"^>
+        echo     ^<servlet^>
+        echo         ^<servlet-name^>FrontServlet^</servlet-name^>
+        echo         ^<servlet-class^>framework.servlet.FrontServlet^</servlet-class^>
+        echo     ^</servlet^>
+        echo     ^<servlet-mapping^>
+        echo         ^<servlet-name^>FrontServlet^</servlet-name^>
+        echo         ^<url-pattern^>/^</url-pattern^>
+        echo     ^</servlet-mapping^>
+        echo     ^<welcome-file-list^>
+        echo         ^<welcome-file^>index.jsp^</welcome-file^>
+        echo     ^</welcome-file-list^>
+        echo ^</web-app^>
+    ) > "%TEST_DIR%\WEB-INF\web.xml"
+    echo [OK] web.xml généré automatiquement.
+)
 
-REM 
-
-
-REM 
+REM ------------------------------------------------------------------------
+REM Étape 5 : Démarrage de Tomcat (optionnel)
+REM ------------------------------------------------------------------------
 if not "%~1"=="" (
-    echo Demarrage de Tomcat...
+    echo Démarrage de Tomcat...
     call "%~1\bin\startup.bat"
 )
+
+echo === Déploiement terminé avec succès ===
+pause
